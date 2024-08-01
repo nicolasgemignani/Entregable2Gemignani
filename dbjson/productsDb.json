@@ -1,0 +1,27 @@
+[
+  {
+    "id": 1,
+    "title": "producto1",
+    "description": "description1",
+    "code": "a1",
+    "price": 200,
+    "status": true,
+    "stock": 10,
+    "category": "Herramientas"
+  },
+  {
+    "id": 2,
+    "title": "producto2",
+    "description": "description3",
+    "code": "a2",
+    "price": 200,
+    "status": true,
+    "stock": 10,
+    "category": "Hogar",
+    "thumbnails": [
+      1,
+      2,
+      3
+    ]
+  }
+]
