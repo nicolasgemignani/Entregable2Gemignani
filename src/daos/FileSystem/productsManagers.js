@@ -1,142 +1,211 @@
-// Importa el modulo fs para interactuar con el sistema de archivos
+import { Server } from 'socket.io'
 import fs from 'fs'
+import Joi from 'joi'
+
+// Definir errores personalizados
+class FileError extends Error {
+    constructor(message) {
+        super(message)
+        this.name = 'FileError'
+    }
+}
+
+class ValidationError extends Error {
+    constructor(message) {
+        super(message);
+        this.name = 'ValidationError'
+    }
+}
+
+// Almacena la instancia de Socket.IO
+let io
+
+// Exportamos la funcion
+export function setIoInstance(ioInstance) {
+    io = ioInstance
+}
 
 // Define la ruta del archivo JSON donde se almacenan los productos
 const path = './dbjson/productsDb.json'
 
+// Definir esquema de validación con Joi
+const productSchema = Joi.object({
+    title: Joi.string().required(),
+    description: Joi.string().required(),
+    code: Joi.string().required(),
+    price: Joi.number().required(),
+    status: Joi.boolean().required(),
+    stock: Joi.number().required(),
+    category: Joi.string().required(),
+    thumbnails: Joi.array().items(Joi.alternatives().try(Joi.string(), Joi.number())).optional()
+});
+
 class ProductsManagersFs {
-    constructor(){
-        // Inicializa la ruta del archivo
-        this.path = path
-        // Enlaza los metodo de la clase para mantener el contexto de "this"
-        this.getProducts = this.getProducts.bind(this);
-        this.createProduct = this.createProduct.bind(this);
-        this.getProductById = this.getProductById.bind(this);
-        this.updateProduct = this.updateProduct.bind(this);
-        this.deleteProduct = this.deleteProduct.bind(this);
+    constructor() {
+        this.path = path;
+        this.getProducts = this.getProducts.bind(this)
+        this.createProduct = this.createProduct.bind(this)
+        this.getProductById = this.getProductById.bind(this)
+        this.updateProduct = this.updateProduct.bind(this)
+        this.deleteProduct = this.deleteProduct.bind(this)
     }
 
-    // Metodo para validar la estructura del producto
+    /**
+     * Valida la estructura del producto
+     * @param {object} producto - El producto a validar
+     * @returns {boolean} - True si el producto es válido, de lo contrario false
+     */
     validarProducto(producto) {
-        // Verifica que todos los campos necesarios existan y no sean null o undefined
-        return (
-        producto.title &&
-        producto.description &&
-        producto.code &&
-        producto.price !== undefined &&
-        producto.status !== undefined &&
-        producto.stock !== undefined &&
-        producto.category
-        )
+        const { error } = productSchema.validate(producto)
+        return !error
     }
-    
-    // Metodo para obtener todos los productos del archivo
-    async getProducts(){
-        try{
-            // Lee el archivo y los parsea a un objeto JSON
+
+    /**
+     * Escribe datos en el archivo
+     * @param {object} data - Los datos a escribir
+     * @throws {FileError} - Lanza un error si falla la escritura
+     */
+    async _writeFile(data) {
+        try {
+            await fs.promises.writeFile(this.path, JSON.stringify(data, null, 2), 'utf-8')
+        } catch (error) {
+            throw new FileError('Error al escribir en el archivo')
+        }
+    }
+
+    /**
+     * Obtiene todos los productos
+     * @returns {Promise<Array>} - Lista de productos
+     * @throws {FileError} - Lanza un error si falla la lectura
+     */
+    async getProducts() {
+        try {
             const resultado = await fs.promises.readFile(this.path, 'utf-8')
             return JSON.parse(resultado)
         } catch (error) {
             if (error.code === 'ENOENT') {
-                // Si el archivo no existe, devuelve un array vacio
                 return []
             }
-            throw new Error('Error al leer los productos');
+            throw new FileError('Error al leer los productos')
         }
     }
 
-    // Metodo para crear un nuevo producto
-    async createProduct(producto){
-        // Valida el producto antes de crearlo
+    /**
+     * Emite un evento a través de Socket.io
+     * @param {string} type - El tipo de evento
+     * @param {object} product - El producto asociado al evento
+     */
+    _emitEvent(type, product) {
+        if (io) {
+            io.emit('productUpdate', { type, product })
+        }
+    }
+
+    /**
+     * Crea un nuevo producto.
+     * @param {object} producto - El producto a crear
+     * @returns {Promise<object>} - Resultado de la operación
+     * @throws {ValidationError} - Lanza un error si el producto no es válido
+     */
+    async createProduct(producto) {
         if (!this.validarProducto(producto)) {
-            return { success: false, message: 'Producto incompleto' };
+            throw new ValidationError('Producto incompleto')
         }
 
         try {
-            // Obtiene la lista de productos existentes
             const productos = await this.getProducts()
-
-            // Verifica si ya existe un producto con el mismo codigo
             const productoExistente = productos.find(p => p.code === producto.code)
-            if (productoExistente){
+            if (productoExistente) {
                 return { success: false, message: 'Ya existe un producto con este código' }
             }
 
-            // Crea un nuevo producto con Id autogenerado
             const nuevoProducto = {
-                id: productos.length > 0 ? productos[productos.length - 1].id + 1: 1,
+                id: productos.length > 0 ? productos[productos.length - 1].id + 1 : 1,
                 ...producto
-            }
+            };
 
-            // Agrega el nuevo producto a la lista y guarda los cambios en el archivo
             productos.push(nuevoProducto)
-            await fs.promises.writeFile(this.path, JSON.stringify(productos, null, 2), 'utf-8')
+            await this._writeFile(productos)
+
+            this._emitEvent('create', nuevoProducto)
+
             return { success: true, message: 'Producto creado correctamente', data: nuevoProducto }
         } catch (error) {
             return { success: false, message: `Error al agregar producto: ${error.message}` }
         }
     }
 
-    // Metodo par obtener un producto por ID
+    /**
+     * Obtiene un producto por su ID
+     * @param {number} id - El ID del producto
+     * @returns {Promise<object|null>} - El producto o null si no existe
+     * @throws {FileError} - Lanza un error si falla la lectura
+     */
     async getProductById(id) {
         try {
-            // Obtiene la lista de productos
             const productos = await this.getProducts()
-            // Busca el producto con el ID especificado
-            const producto = productos.find(producto => producto.id === parseInt(id))
-            return producto || null
+            return productos.find(producto => producto.id === parseInt(id)) || null
         } catch (error) {
-            console.error('Error al obtener el producto', error.message)
-            throw new Error('Error al obtener el producto')
+            throw new FileError('Error al obtener el producto')
         }
     }
-    
-    // Metodo para actualizar un producto existente
+
+    /**
+     * Actualiza un producto por ID.
+     * @param {number} id - El ID del producto a actualizar
+     * @param {object} update - Objeto con los campos a actualizar
+     * @returns {Promise<object>} - Objeto con el resultado de la operación
+     * @throws {FileError} - Lanza un error si el producto no existe o falla la escritura
+     */
     async updateProduct(id, update) {
         try {
-            // Obtiene la lista de productos
             const productos = await this.getProducts()
-            // Encuentra el indice del producto con el ID especificado
             const index = productos.findIndex(producto => producto.id === parseInt(id))
-    
+
             if (index !== -1) {
-                // Actualizar el producto manteniendo el ID original
-                const productoActualizado = { ...productos[index], ...update }
+                const { id: idToRemove, ...filteredUpdate } = update
+                const productoActualizado = { ...productos[index], ...filteredUpdate }
                 productos[index] = productoActualizado
-    
-                // Guardar los cambios en el archivo
-                await fs.promises.writeFile(this.path, JSON.stringify(productos, null, 2), 'utf-8')
-                console.log('Producto actualizado exitosamente', productoActualizado)
+
+                await this._writeFile(productos)
+
+                this._emitEvent('update', productoActualizado)
+
                 return { success: true, message: 'Producto actualizado exitosamente', producto: productoActualizado }
             } else {
-                throw new Error(`Error: El producto con ID ${id} no existe`);
+                throw new FileError(`El producto con ID ${id} no existe`)
             }
         } catch (error) {
-            console.log(error.message)
             return { success: false, message: error.message }
         }
     }
-    
-    // Metodo para eliminar un producto por ID
+
+    /**
+     * Elimina un producto por ID
+     * @param {number} id - El ID del producto a eliminar
+     * @returns {Promise<object>} - Resultado de la operación
+     * @throws {FileError} - Lanza un error si el producto no existe o falla la escritura
+     */
     async deleteProduct(id) {
         try {
-            // Obtiene la lista de productos
-            const productos = await this.getProducts();
-            // Filtra el producto con el ID especificado
-            const newProducts = productos.filter(producto => producto.id !== parseInt(id, 10));
+            const productos = await this.getProducts()
+            const newProducts = productos.filter(producto => producto.id !== parseInt(id, 10))
 
             if (productos.length === newProducts.length) {
-                throw new Error(`Error: El producto con ID ${id} no existe`);
+                throw new FileError(`El producto con ID ${id} no existe`)
             }
 
-            //Guarda la lista actualizada en el archivo
-            await fs.promises.writeFile(this.path, JSON.stringify(newProducts, null, 2), 'utf-8');
-            console.log('Producto eliminado exitosamente');
-            return { success: true, message: `Producto con ID ${id} eliminado correctamente` };
+            await this._writeFile(newProducts)
+
+            if (io) {
+                io.emit('productUpdate', { type: 'delete', productId: id})
+            }
+
+            return { success: true, message: `Producto con ID ${id} eliminado correctamente` }
         } catch (error) {
-            return { success: false, message: error.message };
+            return { success: false, message: error.message }
         }
     }
 }
 
-export default ProductsManagersFs;
+export default ProductsManagersFs

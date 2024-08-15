@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <!-- Establece la codificación de caracteres del documento como UTF-8 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- Define que el ancho de la página debe coincidir con el ancho de la pantalla del dispositivo -->
+    <title>Lista de Productos</title>
+    <!-- Título del documento que se muestra en la pestaña del navegador -->
+</head>
+<body>
+    <h1>Lista de productos</h1>
+    <!-- Título principal de la página -->
+
+    {{!-- Verifica si hay productos en la lista --}}
+    {{#if productos.length}}
+        <ul>
+            <!-- Itera sobre cada producto en la lista y los muestra en un elemento de lista -->
+            {{#each productos}}
+                <li>
+                    <!-- Muestra el título del producto -->
+                    <h2>{{this.title}}</h2>
+                    <!-- Muestra la descripción del producto -->
+                    <p>{{this.description}}</p>
+                    <!-- Muestra el precio del producto -->
+                    <p>Precio: {{this.price}}</p>
+                </li>
+            {{/each}}
+        </ul>
+    {{else}}
+        <!-- Si no hay productos, muestra un mensaje indicándolo -->
+        <p>No hay productos disponibles</p>
+    {{/if}}
+</body>
+</html>

@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <!-- Establece la codificación de caracteres del documento como UTF-8 para soportar todos los caracteres -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- Define que el ancho de la página debe coincidir con el ancho de la pantalla del dispositivo para una mejor experiencia móvil -->
+    <title>Real Time Products</title>
+    <!-- Título de la página que aparecerá en la pestaña del navegador -->
+</head>
+<body>
+    <h1>Real Time Products</h1>
+    <!-- Título principal de la página -->
+
+    <!-- Lista de productos que se actualizará en tiempo real -->
+    <ul id="products-list">
+        <!-- Itera sobre cada producto y genera un elemento de lista para cada uno -->
+        {{#each productos}}
+            <li id="product-{{this.id}}">
+                <!-- Muestra el título del producto -->
+                <h2>{{this.title}}</h2>
+                <!-- Muestra la descripción del producto -->
+                <p>{{this.description}}</p>
+                <!-- Muestra el precio del producto -->
+                <p>Precio: {{this.price}}</p>
+            </li>
+        {{/each}}
+    </ul>
+
+    <!-- Enlace al script de Socket.io para la comunicación en tiempo real -->
+    <script src="/socket.io/socket.io.js"></script>
+    <!-- Enlace al archivo JavaScript que maneja la lógica en tiempo real -->
+    <script src="/js/realTime.js"></script>
+</body>
+</html>

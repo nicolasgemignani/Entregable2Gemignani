@@ -1,100 +1,120 @@
-// Importa el modulo 'fs' para operacion de archivos
-import fs from 'fs'
-// Ruta del archivo JSON que almacena los carritos
+import fs from 'fs/promises'
+import ProductsManagersFs from './productsManagers.js'
+
+const productManager = new ProductsManagersFs()
+
 const path = './dbjson/cartsDb.json'
 
 class CartManagersFS {
-    constructor (){
-        // Inicializa la ruta del archivo
+    constructor() {
         this.path = path
     }
 
-    // Lee el archivo de carritos y lo devuelve como un array
-    async readCart(){
+    /**
+     * Escribe datos en el archivo
+     * @param {Array} data - Los datos a escribir
+     * @throws {Error} - Lanza un error si falla la escritura
+     */
+    async _writeFile(data) {
         try {
-            // Lee el archivo
-            const data = await fs.promises.readFile(this.path, 'utf-8')
-            // Parsea y devuelve los datos
+            await fs.writeFile(this.path, JSON.stringify(data, null, 2), 'utf-8')
+        } catch (error) {
+            throw new Error('Error al escribir en el archivo: ' + error.message)
+        }
+    }
+
+    /**
+     * Lee el archivo de carritos y lo devuelve como un array
+     * @returns {Promise<Array>} - Una promesa que resuelve con la lista de carritos
+     * @throws {Error} - Lanza un error si falla la lectura
+     */
+    async readCart() {
+        try {
+            const data = await fs.readFile(this.path, 'utf-8')
             return JSON.parse(data)
         } catch (error) {
             if (error.code === 'ENOENT') {
-                // Si el archivo no existe, crea uno vacio
-                await fs.promises.writeFile(this.path, JSON.stringify([]), 'utf-8')
-                return []
-            }else {
-                // Lanza un error para otros problemas
-                throw new Error('Error al leer los carritods')
+                await this._writeFile([])
+                return [];
             }
+            throw new Error('Error al leer los carritos: ' + error.message)
         }
     }
 
-    // Crea un nuevo carrito y lo guarda en el archivo JSON
-    async createCart(){
+    /**
+     * Crea un nuevo carrito y lo guarda en el archivo JSON
+     * @returns {Promise<object>} - Resultado de la operación
+     * @throws {Error} - Lanza un error si falla la creación del carrito
+     */
+    async createCart() {
         try {
-            // Obtiene todos los carritos
             const carts = await this.readCart()
             const newCart = {
-                // Asigna un nuebo ID
-                id: carts.length > 0 ? carts[carts.length - 1].id + 1: 1,
-                // Inicializa con un array vacio de productos
+                id: carts.length ? carts[carts.length - 1].id + 1 : 1,
                 products: []
-            }
+            };
 
-            // Agrega el nuevo carrito al array
-            carts.push(newCart)
-            // Guarda el array actualizado
-            await fs.promises.writeFile(this.path, JSON.stringify(carts, null, 2), 'utf-8')
+            carts.push(newCart);
+            await this._writeFile(carts)
 
-            return { success: true, message: 'Carrito creado correctamente', data: newCart}
+            return { success: true, message: 'Carrito creado correctamente', data: newCart }
         } catch (error) {
-            return { success: false, message: `Error al crear el carrito: ${error.message}`}
+            return { success: false, message: 'Error al crear el carrito: ' + error.message }
         }
     }
 
-    // Obtiene un carrito especifico por ID
-    async getCartById(id){
+    /**
+     * Obtiene un carrito específico por ID
+     * @param {number} id - El ID del carrito
+     * @returns {Promise<object|null>} - El carrito encontrado o null si no se encuentra
+     * @throws {Error} - Lanza un error si falla la lectura
+     */
+    async getCartById(id) {
         try {
-            // Obtiene todos los carritos
             const carts = await this.readCart()
-            // Busca el carrito por ID
-            const cart = carts.find(cart => cart.id === parseInt(id))
-            // Devuelve el carrito encontrado o null si no se encuetra
-            return cart || null
+            return carts.find(cart => cart.id === parseInt(id, 10)) || null
         } catch (error) {
-            throw new Error('Error al obtener el carrito')
+            throw new Error('Error al obtener el carrito: ' + error.message)
         }
     }
 
-    // Agrega un producto a un carrito especifico
-    async addProductToCart(cartId, product){
+    /**
+     * Agrega un producto a un carrito específico
+     * @param {number} cartId - El ID del carrito
+     * @param {number} productId - El ID del producto
+     * @returns {Promise<object>} - Resultado de la operación
+     * @throws {Error} - Lanza un error si el carrito o el producto no existen, o si falla la actualización
+     */
+    async addProductToCart(cartId, productId) {
         try {
-            // Obtiene todos los carritos
             const carts = await this.readCart()
-            // Busca el carrito por ID
-            const cartIndex = carts.findIndex(cart => cart.id === parseInt(cartId))
+            const cartIndex = carts.findIndex(cart => cart.id === parseInt(cartId, 10))
 
             if (cartIndex === -1) {
-                return { success: false, message: `Carrito con ID ${cartId} no encontrado`}
+                return { success: false, message: `Carrito con ID ${cartId} no encontrado` }
             }
 
-            // Busca el producto dentro del carrito
-            const productIndex = carts[cartIndex].products.findIndex(p => p.product === product)
+            const product = await productManager.getProductById(productId)
+
+            if (!product) {
+                return { success: false, message: `Producto con ID ${productId} no encontrado` }
+            }
+
+            const productIndex = carts[cartIndex].products.findIndex(p => p.productID === productId)
 
             if (productIndex !== -1) {
-                // Si el producto ya esta en el carrito, incrementa la cantidad
                 carts[cartIndex].products[productIndex].quantity += 1
             } else {
-                // Si el producto no esta en el carrito, lo agrega
-                carts[cartIndex].products.push({ productID: product, quantity: 1 })
+                carts[cartIndex].products.push({ productID: productId, quantity: 1 })
             }
 
-            await fs.promises.writeFile(this.path, JSON.stringify(carts, null, 2), 'utf-8')
+            await this._writeFile(carts)
+
             return { success: true, message: 'Producto agregado al carrito', data: carts[cartIndex] }
         } catch (error) {
-            return { success: false, message: `Error al agregar prodcuto al carrito: ${error.message}` }
+            return { success: false, message: 'Error al agregar producto al carrito: ' + error.message }
         }
     }
 }
 
-// Exporta la clase para su uso en otros archivos
-export default CartManagersFS;
+export default CartManagersFS
